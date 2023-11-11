@@ -61,13 +61,11 @@ def delete_file(path):
     return_code = 0
     # Ensure the path is using only /
     path = path.replace("\\", "/")
-    print("path")
     try:
         os.remove(path)
-        print("ok")
         # Signal removal as successful
     except OSError as err:
-        print(err)
+        logging.error(f"error while trying to delete file at {path}: {err}")
         # Return error code
         return_code = err.args[0]
 
@@ -95,7 +93,7 @@ def copy_file(src, dest):
         shutil.copy(src, dest)
         # Signal copy as successful
     except OSError as err:
-        print(err)
+        logging.error(f"error while trying to copy file from {src} to {dest}: {err}")
         # Return error code
         return_code = err.args[0]
 
@@ -118,10 +116,10 @@ def execute_program(path):
     try:
         subprocess.call(path)
     except OSError as err:
-        print(err)
+        logging.error(f"os error while trying to execute program at {path}: {err}")
         return_code = err.args[0]
     except subprocess.CalledProcessError as err:
-        print(err)
+        logging.error(f"program error while trying to execute program at {path}: {err}")
         return_code = err.args[0]
 
     return return_code
@@ -139,7 +137,7 @@ def screenshot():
         ImageGrab.grab(all_screens=True).save('screenshot.jpg')
         # call function to read photo
     except OSError as err:
-        print(err)
+        logging.error(f"os error while trying to take a screenshot: {err}")
         # Return error code
         return_value = None
 
@@ -164,12 +162,14 @@ def send(comm, data):
     # Include type information along with the data length and actual data
     data = str(data_len) + '$' + data
     sent = 0
+    logging.info("sending data...")
     try:
         while sent < len(data):
             sent += comm.send(data[sent:].encode())
+        logging.info("data sent successfully")
 
     except socket.error as err:
-        print(err)
+        logging.error(f"error while trying to send data to client!: {err}")
         # Return error code
         return_code = err.args[0]
 
@@ -188,8 +188,10 @@ def receive(comm):
     """
     data_len_str = ""
     received_data = ""
+    logging.info("starting receiving data...")
     try:
         # Receive length of the data
+        logging.info("receiving data len...")
         while True:
             buff = comm.recv(1).decode()
             if buff == '$':
@@ -204,6 +206,7 @@ def receive(comm):
             data_len = int(data_len_str)
 
             # Receive the actual data
+            logging.info("receiving the data...")
             i = 0
             while len(received_data) < data_len:
                 buff = comm.recv(data_len - len(received_data)).decode()
@@ -212,11 +215,12 @@ def receive(comm):
                     break
                 received_data += buff
             received_data = received_data.split("$")
+            logging.info("received successfully")
         else:
             received_data = None
 
     except socket.error as err:
-        print(err)
+        logging.error(f"error while trying to receive data from client!: {err}")
         # Return None for failure
         received_data = None
 
@@ -230,10 +234,13 @@ def handle_general(comm, message, num_of_args, return_data, func):
     return_code = 0
     try:
         if num_of_args != 0 and message is not None:
+            logging.debug(f"sending message to client: {message}")
             return_code = send(comm, message)
             if return_code == 0:
+                logging.info("receiving response from client...")
                 res = receive(comm)
                 if res is not None:
+                    logging.debug(f"Executing function {func.__name__}() with {num_of_args} args")
                     data = func(*res[:num_of_args])
                     if return_data:  # signify if you want to return the function return value
                         return_code = send(comm, data)
@@ -251,7 +258,7 @@ def handle_general(comm, message, num_of_args, return_data, func):
             # if you need arguments for function, you need to send client a message and vice versa.
             return_code = 1
     except socket.error as err:
-        print(err)
+        logging.error(f"communication error trying to execute user command: {err}")
         return_code = None
     return return_code
 
@@ -277,7 +284,6 @@ def main():
                     req = receive(conn)
                     if req is not None:
                         req = ''.join(req).upper()
-                        print(req)
 
                         if req == "DIR":
                             r_code = handle_general(conn, "ENTER PATH", 1, True, get_file_list)
@@ -312,15 +318,16 @@ def main():
                             send(conn, "GOODBYE")
                             disconnect = True
                         else:
-                            print("unknown command")
-                            if send(conn, "Unknown command") != 0:
+                            logging.warning(f"unknown command: {req}")
+                            if send(conn, "UNKNOWN COMMAND") != 0:
                                 disconnect = True
                     else:
-                        print("error in request")
+                        logging.error("client hasn't responded!")
                         disconnect = True
             except socket.error as err:
                 logging.error(f"error in communication with client: {err}")
             finally:
+                logging.info("disconnecting client socket")
                 conn.close()
                 logging.info("terminated connection with client socket")
 

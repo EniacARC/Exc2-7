@@ -119,11 +119,12 @@ def main():
         logging.info("client established connection with server")
         want_to_exit = False
         print(f"valid commands: {'|'.join(COMMANDS)}")
+        res = ""
         while not want_to_exit:
             command = input("command: ").upper()
             logging.debug(f"user entered: {command}")
-
-            if True:
+            # temporary solution
+            if command in COMMANDS or "PATH" in res:
                 if send(client, command, True) == 0:
                     res = receive(client)
                     # if image then print image
