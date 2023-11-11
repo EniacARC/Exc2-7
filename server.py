@@ -61,8 +61,10 @@ def delete_file(path):
     return_code = 0
     # Ensure the path is using only /
     path = path.replace("\\", "/")
+    print("path")
     try:
         os.remove(path)
+        print("ok")
         # Signal removal as successful
     except OSError as err:
         print(err)
@@ -208,7 +210,7 @@ def receive(comm):
                 if buff == '':
                     received_data = None
                     break
-                received_data[i] += buff
+                received_data += buff
             received_data = received_data.split("$")
         else:
             received_data = None
@@ -250,7 +252,7 @@ def handle_general(comm, message, num_of_args, return_data, func):
             return_code = 1
     except socket.error as err:
         print(err)
-        return_code = err.args[0]
+        return_code = None
     return return_code
 
 
@@ -274,30 +276,35 @@ def main():
                 while not disconnect:
                     req = receive(conn)
                     if req is not None:
-                        req = [x.upper() for x in req]
+                        req = ''.join(req).upper()
+                        print(req)
 
                         if req == "DIR":
                             r_code = handle_general(conn, "ENTER PATH", 1, True, get_file_list)
-                            if r_code != 0:
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) or r_code is None:
                                 disconnect = True
                         elif req == "DELETE":
-                            r_code = handle_general(conn, "ENTER PATH", 1, False, get_file_list)
-                            if r_code != 0 or (r_code == 0 and send(conn, "FILE DELETED") != 0):
+                            r_code = handle_general(conn, "ENTER PATH", 1, False, delete_file)
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                                    or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
                                 disconnect = True
 
                         elif req == "COPY":
-                            r_code = handle_general(conn, "ENTER PATHS", 2, False, get_file_list)
-                            if r_code != 0 or (r_code == 0 and send(conn, "FILE COPIED") != 0):
+                            r_code = handle_general(conn, "ENTER PATHS", 2, False, copy_file)
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                                    or (r_code is None or (r_code == 0 and send(conn, "FILE COPY") != 0)):
                                 disconnect = True
                         # handle copy request
                         elif req == "EXECUTE":
-                            r_code = handle_general(conn, "ENTER PATH", 1, False, get_file_list)
-                            if r_code != 0 or (r_code == 0 and send(conn, "PROGRAM EXECUTED") != 0):
+                            r_code = handle_general(conn, "ENTER PATH", 1, False, execute_program)
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                                    or (r_code is None or (r_code == 0 and send(conn, "FILE EXECUTE") != 0)):
                                 disconnect = True
                         # handle execute request
                         elif req == "TAKE SCREENSHOT":
-                            r_code = handle_general(conn, None, 0, True, get_file_list)
-                            if r_code != 0:
+                            r_code = handle_general(conn, None, 0, True, screenshot)
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                                    or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
                                 disconnect = True
                         # handle screenshot request
                         elif req == "EXIT":
@@ -327,7 +334,6 @@ def main():
 if __name__ == "__main__":
     # make sure we have a logging directory and configure the logging
     if not os.path.isdir(LOG_DIR):
-        print("hey")
         os.makedirs(LOG_DIR)
     logging.basicConfig(format=LOG_FORMAT, filename=LOG_FILE, level=LOG_LEVEL)
 
