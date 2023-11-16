@@ -7,6 +7,7 @@ Date: 10/11/2023
 import socket
 import logging
 import os
+import re
 
 # define network constants
 SERVER_IP = '127.0.0.1'
@@ -26,10 +27,11 @@ LOG_DIR = 'log'
 LOG_FILE = LOG_DIR + '/loggerClient.log'
 
 
-def send(comm, data, spaces):
+def send(comm, data, args=0):
     """
     Send data over a communication channel.
 
+    :param args:
     :param comm: The communication channel.
     :type comm: socket.socket
 
@@ -40,11 +42,10 @@ def send(comm, data, spaces):
     :rtype: int
     """
     return_code = 0
-    if not spaces:
-        data = data.replace(" ", "$")
     data_len = len(data)
     # Include type information along with the data length and actual data
-    data = str(data_len) + '$' + data
+    data = str(args) + '$' + str(data_len) + '$' + data
+    print(data)
     sent = 0
     try:
         while sent < len(data):
@@ -70,39 +71,54 @@ def receive(comm):
     """
     data_len_str = ""
     received_data = ""
+    num_of_args = ""
     try:
-        # Receive length of the data
+        # Receive num of args
         while True:
             buff = comm.recv(1).decode()
             if buff == '$':
                 break
             if buff == '':
-                data_len_str = None
+                num_of_args = None
                 break
-            data_len_str += buff
+            num_of_args += buff
 
-        # Convert the length to an integer
-        if data_len_str is not None:
-            data_len = int(data_len_str)
+        if num_of_args is not None:
+            num_of_args = int(num_of_args)
 
-            # Receive the actual data
-            i = 0
-            while len(received_data) < data_len:
-                buff = comm.recv(data_len - len(received_data)).decode()
-                if buff == '':
-                    received_data = None
+            # Receive length of the data
+            while True:
+                buff = comm.recv(1).decode()
+                if buff == '$':
                     break
-                received_data += buff
+                if buff == '':
+                    data_len_str = None
+                    break
+                data_len_str += buff
+
+            # Convert the length to an integer
+            if data_len_str is not None:
+                data_len = int(data_len_str)
+
+                # Receive the actual data
+                i = 0
+                while len(received_data) < data_len:
+                    buff = comm.recv(data_len - len(received_data)).decode()
+                    if buff == '':
+                        received_data = None
+                        break
+                    received_data += buff
+            else:
+                received_data = None
         else:
             received_data = None
-
     except socket.error as err:
         print(err)
         # Return None for failure
         received_data = None
 
     finally:
-        return received_data
+        return received_data, num_of_args
 
 
 def main():
@@ -111,38 +127,48 @@ def main():
        """
     # define an ipv4 tcp socket and listen for an incoming connection
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
     try:
         logging.info(f"trying to connect to server at ({SERVER_IP}, {SERVER_PORT})")
         client.connect((SERVER_IP, SERVER_PORT))
+
         print("connected to server")
         logging.info("client established connection with server")
+
         want_to_exit = False
         print(f"valid commands: {'|'.join(COMMANDS)}")
-        res = ""
-        while not want_to_exit:
-            command = input("command: ").upper()
-            logging.debug(f"user entered: {command}")
-            # temporary solution
-            if command in COMMANDS or "PATH" in res:
-                if send(client, command, True) == 0:
-                    res = receive(client)
-                    # if image then print image
-                    if res is not None and command != "TAKE SCREENSHOT":
-                        print(f"response: {res}")
-                        logging.debug(f"the server responded with {res}")
-                    else:
-                        print("error while receiving response from server!")
-                        want_to_exit = True
 
+        res, args = None, 0
+        while not want_to_exit:
+            # Get n inputs from the user
+            # Get args inputs from the user
+            command = [input(f"Enter command: ") for _ in range(max(args, 1))]
+            # Join the inputs using '$' and print the result
+            command = '$'.join(command)
+            logging.debug(f"user entered: {command}")
+
+            # if args is 0 then change to command uppercase
+            if args == 0:
+                command = command.upper()
+
+            print(command)
+
+            if command in COMMANDS or args != 0:
+                print("hello")
+                # we know we are sending command or receiving final response
+                if send(client, command) == 0:
+                    res, args = receive(client)
                 else:
                     print("error! couldn't send data to server!")
                     want_to_exit = True
-
-                if command == STOP_SERVER_CONNECTION:
-                    want_to_exit = True
             else:
                 print(ERR_INPUT + ' ' + '|'.join(COMMANDS))
+
+            if command != "TAKE SCREENSHOT" and res is not None:
+                print(f"server: {res}")
+                res = None
+
+            if command == STOP_SERVER_CONNECTION:
+                want_to_exit = True
 
     except socket.error as err:
         logging.error(f"error in communication with server: {err}")
@@ -154,8 +180,8 @@ def main():
         # sending the EXIT command to the server
         # note: even if I didn't add this part the server would still close the socket,
         # and everything would work as expected. It's just more correct to do it this way.
-        if send(client, STOP_SERVER_CONNECTION, True) != 1:
-            res = receive(client)
+        if send(client, STOP_SERVER_CONNECTION, False) != 1:
+            res, args = receive(client)
             if res != '':
                 print(res)
                 logging.debug(f"the server responded with {res}")

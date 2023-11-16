@@ -19,6 +19,7 @@ LISTEN_PORT = 17207
 Q_LEN = 1
 MAX_PACKET = 1024
 EXCEPTED_REQUEST_TYPE = 'str'
+NO_PATH_ERROR = "no files found at path specified"
 
 # define log constants
 LOG_FORMAT = '%(levelname)s | %(asctime)s | %(processName)s | %(message)s'
@@ -41,11 +42,12 @@ def get_file_list(path):
     path = path.replace("/", "\\")
     files = glob.glob(rf"{path}/*.*", recursive=False)
 
-    # Change format back to /
-    for i in range(len(files)):
-        files[i] = files[i].replace("\\", "/")
+    # Change format back to /exir
+    files = list(map(lambda x: x.replace("\\", "/"), files))
 
-    return str(files)
+    # Set the return value and log warning if no files were found
+    str1 = str(files) if len(files) > 0 else logging.warning(f"no files found at path: '{path}'") or NO_PATH_ERROR
+    return str1
 
 
 def delete_file(path):
@@ -144,10 +146,11 @@ def screenshot():
     return return_value
 
 
-def send(comm, data):
+def send(comm, data, args=0):
     """
     Send data over a communication channel.
 
+    :param args:
     :param comm: The communication channel.
     :type comm: socket.socket
 
@@ -160,12 +163,12 @@ def send(comm, data):
     return_code = 0
     data_len = len(data)
     # Include type information along with the data length and actual data
-    data = str(data_len) + '$' + data
+    to_send = str(args) + '$' + str(data_len) + '$' + data
     sent = 0
     logging.info("sending data...")
     try:
-        while sent < len(data):
-            sent += comm.send(data[sent:].encode())
+        while sent < len(to_send):
+            sent += comm.send(to_send[sent:].encode())
         logging.info("data sent successfully")
 
     except socket.error as err:
@@ -188,34 +191,49 @@ def receive(comm):
     """
     data_len_str = ""
     received_data = ""
+    num_of_args = ""
     logging.info("starting receiving data...")
+    # Receive num of args
     try:
-        # Receive length of the data
-        logging.info("receiving data len...")
         while True:
             buff = comm.recv(1).decode()
             if buff == '$':
                 break
             if buff == '':
-                data_len_str = None
+                num_of_args = None
                 break
-            data_len_str += buff
+            num_of_args += buff
 
-        # Convert the length to an integer
-        if data_len_str is not None:
-            data_len = int(data_len_str)
-
-            # Receive the actual data
-            logging.info("receiving the data...")
-            i = 0
-            while len(received_data) < data_len:
-                buff = comm.recv(data_len - len(received_data)).decode()
-                if buff == '':
-                    received_data = None
+        if num_of_args is not None:
+            num_of_args = int(num_of_args)
+            # Receive length of the data
+            logging.info("receiving data len...")
+            while True:
+                buff = comm.recv(1).decode()
+                if buff == '$':
                     break
-                received_data += buff
-            received_data = received_data.split("$")
-            logging.info("received successfully")
+                if buff == '':
+                    data_len_str = None
+                    break
+                data_len_str += buff
+
+            # Convert the length to an integer
+            if data_len_str is not None:
+                data_len = int(data_len_str)
+
+                # Receive the actual data
+                logging.info("receiving the data...")
+                i = 0
+                while len(received_data) < data_len:
+                    buff = comm.recv(data_len - len(received_data)).decode()
+                    if buff == '':
+                        received_data = None
+                        break
+                    received_data += buff
+                received_data = received_data.split("$")
+                logging.info("received successfully")
+            else:
+                received_data = None
         else:
             received_data = None
 
@@ -225,6 +243,7 @@ def receive(comm):
         received_data = None
 
     finally:
+        print(received_data)
         return received_data
 
 
@@ -235,17 +254,21 @@ def handle_general(comm, message, num_of_args, return_data, func):
     try:
         if num_of_args != 0 and message is not None:
             logging.debug(f"sending message to client: {message}")
-            return_code = send(comm, message)
+            return_code = send(comm, message, num_of_args)
             if return_code == 0:
                 logging.info("receiving response from client...")
                 res = receive(comm)
                 if res is not None:
                     logging.debug(f"Executing function {func.__name__}() with {num_of_args} args")
-                    data = func(*res[:num_of_args])
-                    if return_data:  # signify if you want to return the function return value
-                        return_code = send(comm, data)
+                    if len(res) == num_of_args:
+                        print(*res[:num_of_args])
+                        data = func(*res[:num_of_args])
+                        if return_data:  # signify if you want to return the function return value
+                            return_code = send(comm, data, num_of_args)
+                        else:
+                            return_code = data
                     else:
-                        return_code = data
+                        return_code = 1
 
         elif num_of_args == 0 and message is None:
             data = func()
@@ -291,25 +314,25 @@ def main():
                                 disconnect = True
                         elif req == "DELETE":
                             r_code = handle_general(conn, "ENTER PATH", 1, False, delete_file)
-                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
                                     or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
                                 disconnect = True
 
                         elif req == "COPY":
                             r_code = handle_general(conn, "ENTER PATHS", 2, False, copy_file)
-                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
                                     or (r_code is None or (r_code == 0 and send(conn, "FILE COPY") != 0)):
                                 disconnect = True
                         # handle copy request
                         elif req == "EXECUTE":
                             r_code = handle_general(conn, "ENTER PATH", 1, False, execute_program)
-                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
                                     or (r_code is None or (r_code == 0 and send(conn, "FILE EXECUTE") != 0)):
                                 disconnect = True
                         # handle execute request
                         elif req == "TAKE SCREENSHOT":
                             r_code = handle_general(conn, None, 0, True, screenshot)
-                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0)\
+                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
                                     or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
                                 disconnect = True
                         # handle screenshot request
