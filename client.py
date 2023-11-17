@@ -4,10 +4,14 @@ Program name: Exc 2.7
 Description: A basic commands server
 Date: 10/11/2023
 """
+import base64
 import socket
 import logging
 import os
 import re
+from io import BytesIO
+import binascii
+from PIL import Image
 
 # define network constants
 SERVER_IP = '127.0.0.1'
@@ -25,6 +29,28 @@ LOG_FORMAT = '%(levelname)s | %(asctime)s | %(processName)s | %(message)s'
 LOG_LEVEL = logging.DEBUG
 LOG_DIR = 'log'
 LOG_FILE = LOG_DIR + '/loggerClient.log'
+
+
+def decode_image(base64_bytes):
+    try:
+        # Clean prev values if exists
+        with open('encoded_image.txt', 'w') as txt_file:
+            pass
+        # Save the base64 string to a file (optional)
+        with open('encoded_image.txt', 'w') as txt_file:
+            txt_file.write(base64_bytes)
+
+        # Decode the base64 string back to image data
+        decoded_image = base64.b64decode(base64_bytes)
+
+        # Create a PIL Image object from the decoded image data
+        image = Image.open(BytesIO(decoded_image))
+
+        # Save the image
+        image.save('output_image.jpg')
+        image.show()
+    except binascii.Error as err:
+        print(f"Error decoding base64: {err}")
 
 
 def send(comm, data, args=0):
@@ -137,7 +163,8 @@ def main():
         want_to_exit = False
         print(f"valid commands: {'|'.join(COMMANDS)}")
 
-        res, args = None, 0
+        res = None
+        args = 0
         while not want_to_exit:
             # Get n inputs from the user
             # Get args inputs from the user
@@ -153,7 +180,6 @@ def main():
             print(command)
 
             if command in COMMANDS or args != 0:
-                print("hello")
                 # we know we are sending command or receiving final response
                 if send(client, command) == 0:
                     res, args = receive(client)
@@ -165,6 +191,10 @@ def main():
 
             if command != "TAKE SCREENSHOT" and res is not None:
                 print(f"server: {res}")
+                res = None
+
+            if command == "TAKE SCREENSHOT" and res is not None:
+                decode_image(res)
                 res = None
 
             if command == STOP_SERVER_CONNECTION:

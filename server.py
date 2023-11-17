@@ -4,7 +4,7 @@ Program name: Exc 2.7
 Description: A basic commands server
 Date: 10/11/2023
 """
-
+import base64
 import socket
 import logging
 import glob
@@ -138,6 +138,10 @@ def screenshot():
     try:
         ImageGrab.grab(all_screens=True).save('screenshot.jpg')
         # call function to read photo
+        base64_bytes = b''
+        with open('screenshot.jpg', 'rb') as img:
+            base64_bytes = base64.b64encode(img.read()).decode('utf-8')
+        return base64_bytes
     except OSError as err:
         logging.error(f"os error while trying to take a screenshot: {err}")
         # Return error code
@@ -147,6 +151,7 @@ def screenshot():
 
 
 def send(comm, data, args=0):
+    logging.info(f"trying to send{data}")
     """
     Send data over a communication channel.
 
@@ -307,12 +312,13 @@ def main():
                     req = receive(conn)
                     if req is not None:
                         req = ''.join(req).upper()
-
+                        logging.debug(f"user input: {req}")
                         if req == "DIR":
                             r_code = handle_general(conn, "ENTER PATH", 1, True, get_file_list)
                             if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) or r_code is None:
                                 disconnect = True
                         elif req == "DELETE":
+                            print("what?")
                             r_code = handle_general(conn, "ENTER PATH", 1, False, delete_file)
                             if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
                                     or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
@@ -332,8 +338,7 @@ def main():
                         # handle execute request
                         elif req == "TAKE SCREENSHOT":
                             r_code = handle_general(conn, None, 0, True, screenshot)
-                            if (r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0) \
-                                    or (r_code is None or (r_code == 0 and send(conn, "FILE DELETED") != 0)):
+                            if r_code != 0 and send(conn, "SOMETHING WENT WRONG!") != 0:
                                 disconnect = True
                         # handle screenshot request
                         elif req == "EXIT":
