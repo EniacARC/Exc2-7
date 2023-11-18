@@ -42,7 +42,7 @@ def get_file_list(path):
     path = path.replace("/", "\\")
     files = glob.glob(rf"{path}/*.*", recursive=False)
 
-    # Change format back to /exir
+    # Change format back to /
     files = list(map(lambda x: x.replace("\\", "/"), files))
 
     # Set the return value and log warning if no files were found
@@ -151,11 +151,12 @@ def screenshot():
 
 
 def send(comm, data, args=0):
-    logging.info(f"trying to send{data}")
     """
     Send data over a communication channel.
 
-    :param args:
+    :param args: number of arguments the server expects in the next request
+    :type args: int
+
     :param comm: The communication channel.
     :type comm: socket.socket
 
@@ -165,6 +166,7 @@ def send(comm, data, args=0):
     :return: 0 if successful, error code otherwise.
     :rtype: int
     """
+    logging.info(f"trying to send{data}")
     return_code = 0
     data_len = len(data)
     # Include type information along with the data length and actual data
@@ -236,6 +238,9 @@ def receive(comm):
                         break
                     received_data += buff
                 received_data = received_data.split("$")
+                if len(received_data) != max(num_of_args, 1):
+                    logging.warning("server received a different request than expected!")
+                    received_data = None
                 logging.info("received successfully")
             else:
                 received_data = None

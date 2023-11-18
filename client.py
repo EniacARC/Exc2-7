@@ -21,8 +21,10 @@ MAX_PACKET = 1024
 COMMAND_LEN = 4
 HEADER_LEN = 2
 STOP_SERVER_CONNECTION = "EXIT"
+SHOW_COMMAND = "SHOW COMMANDS"
 ERR_INPUT = "ERROR! unknown command!"
 COMMANDS = ["DIR", "DELETE", "COPY", "EXECUTE", "TAKE SCREENSHOT", "EXIT"]
+VALID_COMMANDS = f"valid commands: |{'|'.join(COMMANDS)}|" + ' - {' + SHOW_COMMAND + '}'
 
 # define log constants
 LOG_FORMAT = '%(levelname)s | %(asctime)s | %(processName)s | %(message)s'
@@ -33,9 +35,6 @@ LOG_FILE = LOG_DIR + '/loggerClient.log'
 
 def decode_image(base64_bytes):
     try:
-        # Clean prev values if exists
-        with open('encoded_image.txt', 'w') as txt_file:
-            pass
         # Save the base64 string to a file (optional)
         with open('encoded_image.txt', 'w') as txt_file:
             txt_file.write(base64_bytes)
@@ -57,7 +56,8 @@ def send(comm, data, args=0):
     """
     Send data over a communication channel.
 
-    :param args:
+    :param args: number of arguments (not commands) the client sends to the server
+    :type args: int
     :param comm: The communication channel.
     :type comm: socket.socket
 
@@ -71,7 +71,6 @@ def send(comm, data, args=0):
     data_len = len(data)
     # Include type information along with the data length and actual data
     data = str(args) + '$' + str(data_len) + '$' + data
-    print(data)
     sent = 0
     try:
         while sent < len(data):
@@ -161,12 +160,11 @@ def main():
         logging.info("client established connection with server")
 
         want_to_exit = False
-        print(f"valid commands: {'|'.join(COMMANDS)}")
+        print(VALID_COMMANDS)
 
         res = None
         args = 0
         while not want_to_exit:
-            # Get n inputs from the user
             # Get args inputs from the user
             command = [input(f"Enter command: ") for _ in range(max(args, 1))]
             # Join the inputs using '$' and print the result
@@ -177,23 +175,24 @@ def main():
             if args == 0:
                 command = command.upper()
 
-            print(command)
+            if command == "SHOW COMMANDS":
+                print(VALID_COMMANDS)
 
-            if command in COMMANDS or args != 0:
+            elif command in COMMANDS or args != 0:
                 # we know we are sending command or receiving final response
-                if send(client, command) == 0:
+                if send(client, command, args) == 0:
                     res, args = receive(client)
                 else:
                     print("error! couldn't send data to server!")
                     want_to_exit = True
             else:
-                print(ERR_INPUT + ' ' + '|'.join(COMMANDS))
+                print(ERR_INPUT + ' ' + VALID_COMMANDS)
 
             if command != "TAKE SCREENSHOT" and res is not None:
                 print(f"server: {res}")
                 res = None
 
-            if command == "TAKE SCREENSHOT" and res is not None:
+            elif command == "TAKE SCREENSHOT" and res is not None:
                 decode_image(res)
                 res = None
 
@@ -205,15 +204,16 @@ def main():
 
     except KeyboardInterrupt:
         logging.warning("user has stopped the program using keyboard interrupt!")
-        print("stopping client.py")
+        # Clear the input line
+        print("\033[A                             \033[A")
 
         # sending the EXIT command to the server
         # note: even if I didn't add this part the server would still close the socket,
         # and everything would work as expected. It's just more correct to do it this way.
-        if send(client, STOP_SERVER_CONNECTION, False) != 1:
+        if send(client, STOP_SERVER_CONNECTION) != 1:
             res, args = receive(client)
-            if res != '':
-                print(res)
+            if res is not None:
+                print(f"server: {res}")
                 logging.debug(f"the server responded with {res}")
 
     finally:
