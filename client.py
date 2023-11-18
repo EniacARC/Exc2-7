@@ -34,6 +34,14 @@ LOG_FILE = LOG_DIR + '/loggerClient.log'
 
 
 def decode_image(base64_bytes):
+    """
+    Decode a base64-encoded image, save it to a file, and show it.
+
+    :param base64_bytes: The base64-encoded image data.
+    :type base64_bytes: str
+
+    :return: None
+    """
     try:
         # Save the base64 string to a file (optional)
         with open('encoded_image.txt', 'w') as txt_file:
@@ -49,6 +57,7 @@ def decode_image(base64_bytes):
         image.save('output_image.jpg')
         image.show()
     except binascii.Error as err:
+        logging.error(f"eror while trying to decode image! '{err}'")
         print(f"Error decoding base64: {err}")
 
 
