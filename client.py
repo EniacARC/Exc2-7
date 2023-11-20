@@ -21,6 +21,7 @@ MAX_PACKET = 1024
 COMMAND_LEN = 4
 HEADER_LEN = 2
 STOP_SERVER_CONNECTION = "EXIT"
+PHOTO_COMMAND = "TAKE SCREENSHOT"
 SHOW_COMMAND = "SHOW COMMANDS"
 ERR_INPUT = "ERROR! unknown command!"
 COMMANDS = ["DIR", "DELETE", "COPY", "EXECUTE", "TAKE SCREENSHOT", "EXIT"]
@@ -197,11 +198,11 @@ def main():
             else:
                 print(ERR_INPUT + ' ' + VALID_COMMANDS)
 
-            if command != "TAKE SCREENSHOT" and res is not None:
+            if command != PHOTO_COMMAND and res is not None:
                 print(f"server: {res}")
                 res = None
 
-            elif command == "TAKE SCREENSHOT" and res is not None:
+            elif command == PHOTO_COMMAND and res is not None:
                 decode_image(res)
                 res = None
 
